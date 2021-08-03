@@ -2,24 +2,11 @@ import sys
 import os
 from fpdf import FPDF
 import csv
-"""
-01 Basics, page in in
-02 Switch to multi_cell, page in mm
-03 Play w/the multi cell height and width, page in pt
-04 Try layout
-05 Set hardcoded panes try with inches
-06 Add text from files
-07 Generate 8pg booklet. First version
-08 Recipe titles
-09 Convert to a class
-10 Adding control file
-"""
+import datetime
 
 # margins all in inches
 #marPage = 0.25
 #marPane = 0.2
-
-#crayons = [(0,0,0),(255,0,0),(0,255,0),(0,0,255),(255,0,255),(255,255,0),(0,255,255),(128,128,128)]
 
 class Booklet(FPDF):
     def __init__(self, *args, **kwargs):
@@ -28,7 +15,7 @@ class Booklet(FPDF):
                 'title' : "Booklet",
                 'author' : '',
                 'date' : 'August 1, 2021',
-                'version' : "1.0",
+                'edition' : "1.0",
                 'book8up' : '1.0',
                 '0': '', '1': '', '2': '', '3': '', '4': '', '5': '',
                 }
@@ -99,21 +86,14 @@ class Booklet(FPDF):
         self.fname = fname
         self.add_page()
         self.set_margins(marPage, marPage, marPage)
-        #self.print_pane(0, "rWonderpot.txt")
-        #self.print_pane(1, "rLentils.txt")
-        #self.print_title(2, "rTitle.txt")
-        self.print_title(5)
-        self.print_back(pane_index=4)
         self.print_pane(0, self.element['0'])
         self.print_pane(1, self.element['1'])
         self.print_pane(2, self.element['2'])
-
-    def alpha(self, txt):
-        # a test routine
-        self.set_font('Arial','B',12)
-        sw = self.get_string_width(txt)
-        print ("{} for [{}]".format(sw, txt))
-        print (txt.split())
+        self.print_pane(3, self.element['3'])
+        self.print_back(pane_index=4)
+        self.print_title(5)
+        self.print_pane(6, self.element['4'])
+        self.print_pane(7, self.element['5'])
 
     def print_pane(self, pane_index, infile):
         print ("print_pane({})".format(infile))
@@ -137,28 +117,40 @@ class Booklet(FPDF):
         pt2in = 0.0138889
         mch = 6 * 1.3 * pt2in
 
-        px = self.panes[pane_index][0]
-        py = self.panes[pane_index][1] + (2*self.pane_height/3)
-        pw = self.pane_width
+        #adjust width to make narrower
+        pw_adjustment = 2
+        back_align = 'C'
+        px = self.panes[pane_index][0] + pw_adjustment *self.pane_margin
+        py = self.panes[pane_index][1] + (1*self.pane_height/2)
+        pw = self.pane_width - 2*pw_adjustment *self.pane_margin #double for left&right
         print("\tpx={:.2f} py={:.2f} pw={:.2f}".format(px, py, pw))
 
         self.set_xy(px, py)
-        keys = { 'title', 'date', 'version', 'book8up'}
         txt = self.element['title']
-        self.multi_cell(pw, mch, txt, align='L', border=0)
-        if self.element['version']:
+        self.multi_cell(pw, mch, txt, align=back_align, border=0)
+
+        if self.element['author']:
             self.set_x(px)
-            txt = "Ver {}".format(self.element['version'])
-            self.multi_cell(pw, mch, txt, align='L', border=0)
-        if self.element['date']:
+            txt = "by {}".format(self.element['author'])
+            self.multi_cell(pw, mch, txt, align=back_align, border=0)
+
+        if self.element['edition']:
             self.set_x(px)
-            txt = "Published on {}".format(self.element['date'])
-            self.multi_cell(pw, mch, txt, align='L', border=0)
+            txt = "{} Edition".format(self.element['edition'])
+            self.multi_cell(pw, mch, txt, align=back_align, border=0)
+
+        #if self.element['date']:
+        now = datetime.datetime.now().strftime("%d %B %Y")
+        self.set_x(px)
+        txt = "Created on {}".format(now)
+        self.multi_cell(pw, mch, txt, align=back_align, border=0)
+
         if self.element['book8up']:
             self.set_x(px)
-            txt = "Using book8up.py Ver {}".format(self.element['book8up'])
-            self.multi_cell(pw, mch, txt, align='L', border=0)
+            txt = "using book8up.py Ver {}".format(self.element['book8up'])
+            self.multi_cell(pw, mch, txt, align=back_align, border=0)
 
+        self.pane_frame(pane_index)
 
 
 
@@ -169,9 +161,10 @@ class Booklet(FPDF):
         pane_mar = (1.0 - pane_use)/2
         pw = self.pane_width * pane_use
 
-        self.set_font('Arial','B',12)
+        title_size = 14 #points
+        self.set_font('Arial','B',title_size)
         pt2in = 0.0138889
-        mch = 12 * 1.3 * pt2in
+        mch = title_size * 1.3 * pt2in
 
         sw = self.get_string_width(txt)
         px = self.panes[pane_index][0] + (self.pane_width * pane_mar)
@@ -184,11 +177,11 @@ class Booklet(FPDF):
         sw = self.get_string_width(txt)
         #print ("print_title() width={:.2f} for [{}] panelw={:.2f} with x={:.2f}->{:.2f} y={:.2f}->{:.2f} h={:.3f}". \
         #        format(sw, txt, pw, px, self.get_x(), py, self.get_y(), mch))
-        print ("print_title() of {}".format(txt))
-        print ("\tx= {:.2f} to {:.2f} delta {:.2f}".format(px,self.get_x(),self.get_x()-px))
-        print ("\ty= {:.2f} to {:.2f} delta {:.2f}".format(py,self.get_y(),self.get_y()-py))
-        print ("\tcomputed w={:.3f} h={:.3f}".format(sw, mch))
-        print ("\n")
+        #print ("print_title() of {}".format(txt))
+        #print ("\tx= {:.2f} to {:.2f} delta {:.2f}".format(px,self.get_x(),self.get_x()-px))
+        #print ("\ty= {:.2f} to {:.2f} delta {:.2f}".format(py,self.get_y(),self.get_y()-py))
+        #print ("\tcomputed w={:.3f} h={:.3f}".format(sw, mch))
+        #print ("\n")
 
         self.set_font('Arial','',10)
         self.set_x(px)
@@ -196,7 +189,18 @@ class Booklet(FPDF):
         txt = self.element['author']
         self.set_x(px)
         self.multi_cell(pw, mch, txt, align='C', border=0)
-        print ("Fini title")
+        #print ("Fini title")
+
+        self.pane_frame(pane_index)
+
+
+    def pane_frame(self, pane_index):
+        px = self.panes[pane_index][0]
+        py = self.panes[pane_index][1]
+        self.line(px, py, px+self.pane_width, py)
+        self.line(px, py+self.pane_height, px+self.pane_width, py+self.pane_height)
+        self.line(px, py, px, py+self.pane_height)
+        self.line(px+self.pane_width, py, px+self.pane_width, py+self.pane_height)
 
 
     def get_file_text(self, infile):
