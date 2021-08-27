@@ -3,14 +3,23 @@ import os
 from fpdf import FPDF
 import csv
 import datetime
+import configparser
+'''
+ToDo
+x Create an ini file for reading in doc parameters
+x Base class has the ini and defn files
+x Frame on title and backpage and each page
 
-# margins all in inches
-#marPage = 0.25
-#marPane = 0.2
+o Book publishing with defn on command line
+o Image on Title and back
+o Fold lines
+o Better control on book defn file
+o Other page types besides recipe
+'''
 
 class Booklet(FPDF):
     def __init__(self, *args, **kwargs):
-        super(Booklet, self).__init__(*args, **kwargs)
+        super(Booklet, self).__init__('L', 'in','Letter')
         self.element = { # elements in the book
                 'title' : "Booklet",
                 'author' : '',
@@ -19,35 +28,68 @@ class Booklet(FPDF):
                 'book8up' : '1.0',
                 '0': '', '1': '', '2': '', '3': '', '4': '', '5': '',
                 }
-        print ("init() exec")
+        self.config = configparser.ConfigParser()
 
-    def build_panes(self, page_margin, pane_margin):
+        # added stuff
+        self.fname = "Boomlet.pdf"
+        ini_file = "book.ini"
+        if 'ini' in kwargs:
+            print ("Processing new ini file = ", kwargs['ini'])
+            ini_file = kwargs['ini']
+        self.read_ini(ini_file)
+        self.build_panes()
+
+
+    def read_ini(self, iniFile):
+        #print ("Exe {}".format("read_ini"))
+        #print ("\tinFile = {}".format(iniFile))
+        self.config = configparser.ConfigParser()
+        self.config.read(iniFile)
+        default = self.config['Default']
+        self.page_margin = default.getfloat('PageMargin', 0.2)
+        self.pane_margin = default.getfloat('PaneMargin', 0.2)
+        self.pane_font_size = default.getint('PaneFontSize', 7)
+        self.back_font_size = default.getint('BackFontSize', 6)
+        self.title_font_size = default.getint('TitleFontSize', 14)
+        self.author_font_size = default.getint('AuthorFontSize', 10)
+        self.title_position = default.getint('TitlePosition', 40)
+        self.pane_use_width = default.getfloat('PaneUseWidth', 0.80)
+        self.pt2in = 0.0138889
+        self.title_frame = default.getboolean('TitleFrame', True)
+        self.back_frame = default.getboolean('BackFrame', True)
+
+
+
+
+    def build_panes(self):
         # hardcoded
         print ("building_panes() init")
-        self.page_margin = page_margin
-        self.pane_margin = pane_margin
-        paneW = (11 - 2*page_margin - 3*pane_margin)/4
-        paneH = (8.5 - 2*page_margin - pane_margin)/2
-        self.pane_width = (11 - 2*page_margin - 3*pane_margin)/4
-        self.pane_height = (8.5 - 2*page_margin - pane_margin)/2
+        #self.page_margin = self.ipage_margin
+        #self.pane_margin = self.ipane_margin
+        paneW = (11 - 2*self.page_margin - 3*self.pane_margin)/4
+        paneH = (8.5 - 2*self.page_margin - self.pane_margin)/2
+        self.pane_width = (11 - 2*self.page_margin - 3*self.pane_margin)/4
+        self.pane_height = (8.5 - 2*self.page_margin - self.pane_margin)/2
         self.panes = []
         for h  in range (1,3):
             for w in range (1,5):
-                x1 = page_margin + (w-1)*(self.pane_width + pane_margin)
-                y1 = page_margin + (h-1)*(self.pane_height + pane_margin)
+                x1 = self.page_margin + (w-1)*(self.pane_width + self.pane_margin)
+                y1 = self.page_margin + (h-1)*(self.pane_height + self.pane_margin)
                 x2 = x1 + self.pane_width
                 y2 = y1 + self.pane_height
-                #self.panes.append([x1, y1, x2, y2])
                 self.panes.append([x1, y1])
         j=0
+        '''
         for pane in self.panes:
             print ("{} {:.2f} {:.2f}".format(j, pane[0], pane[1]))
             j+=1
+        '''
 
     def bold(self):
-        self.set_font('Arial','B',7)
+        self.set_font('Arial','B',self.pane_font_size)
+
     def normal(self):
-        self.set_font('Arial','',7)
+        self.set_font('Arial','',self.pane_font_size)
 
     def load_definition(self, fname):
         with open(fname) as csv_file:
@@ -65,16 +107,17 @@ class Booklet(FPDF):
                     print ("Foreign key ", row[0].lower(), " ignored")
             
             """
-            """
+            print ('\n')
+            print ("="*50)
             print (self.load_definition.__name__)
             for key, value in self.element.items():
                 print (key, " : ", value)
             print ("="*50)
+            """
 
 
 
-
-    def process(self, fname, define_file):
+    def process(self, define_file):
         marPage = 0.25
         marPane = 0.2
         print ("process() init with " + define_file)
@@ -83,7 +126,6 @@ class Booklet(FPDF):
 
         #define = self.get_file_text(define_file)
         #print (define)
-        self.fname = fname
         self.add_page()
         self.set_margins(marPage, marPage, marPage)
         self.print_pane(0, self.element['0'])
@@ -96,26 +138,27 @@ class Booklet(FPDF):
         self.print_pane(7, self.element['5'])
 
     def print_pane(self, pane_index, infile):
-        print ("print_pane({})".format(infile))
+        #print ("print_pane({})".format(infile))
         txt = self.get_file_text(infile)
         px = self.panes[pane_index][0]
         py = self.panes[pane_index][1]
         #pw = self.panes[pane_index][2] - self.panes[pane_index][0]
         pw = self.pane_width
         
+        mch = self.pane_font_size * 1.2 * self.pt2in
+
         j = txt.find('\n')
         self.set_xy(px, py)
         self.bold()
-        self.multi_cell(pw, 0.15, txt[:j], align='C')
+        self.multi_cell(pw, (mch*1.5), txt[:j], align='C')
         self.set_x(px)
         self.normal()
-        self.multi_cell(pw, 0.1, txt[(j+1):])
+        self.multi_cell(pw, mch, txt[(j+1):])
 
     def print_back(self, pane_index=2):
-        print("print_back() on pane {}".format(pane_index))
-        self.set_font('Arial','',6)
-        pt2in = 0.0138889
-        mch = 6 * 1.3 * pt2in
+        #print("print_back() on pane {}".format(pane_index))
+        self.set_font('Arial','', self.back_font_size)
+        mch = self.back_font_size * 1.3 * self.pt2in
 
         #adjust width to make narrower
         pw_adjustment = 2
@@ -123,7 +166,7 @@ class Booklet(FPDF):
         px = self.panes[pane_index][0] + pw_adjustment *self.pane_margin
         py = self.panes[pane_index][1] + (1*self.pane_height/2)
         pw = self.pane_width - 2*pw_adjustment *self.pane_margin #double for left&right
-        print("\tpx={:.2f} py={:.2f} pw={:.2f}".format(px, py, pw))
+        #print("\tpx={:.2f} py={:.2f} pw={:.2f}".format(px, py, pw))
 
         self.set_xy(px, py)
         txt = self.element['title']
@@ -150,48 +193,38 @@ class Booklet(FPDF):
             txt = "using book8up.py Ver {}".format(self.element['book8up'])
             self.multi_cell(pw, mch, txt, align=back_align, border=0)
 
-        self.pane_frame(pane_index)
+        if self.back_frame: self.pane_frame(pane_index)
 
 
 
     def print_title(self, pane_index=7, title_text=None):
         txt = title_text or self.element['title']
 
-        pane_use = 0.8
-        pane_mar = (1.0 - pane_use)/2
-        pw = self.pane_width * pane_use
+        pane_mar = (1.0 - self.pane_use_width)/2
+        pw = self.pane_width * self.pane_use_width
 
-        title_size = 14 #points
-        self.set_font('Arial','B',title_size)
-        pt2in = 0.0138889
-        mch = title_size * 1.3 * pt2in
+        self.set_font('Arial','B', self.title_font_size)
+        mch = self.title_font_size * 1.3 * self.pt2in
 
         sw = self.get_string_width(txt)
         px = self.panes[pane_index][0] + (self.pane_width * pane_mar)
-        py = self.panes[pane_index][1] + (self.pane_height/2) - mch * (int(sw/pw)+1)
+        py = self.panes[pane_index][1] + (self.pane_height*self.title_position/100.0) - mch * (int(sw/pw)+1)
+        #xxxx
 
         self.set_xy(px, py)
 
 
         self.multi_cell(pw, mch, txt, align='C', border=0)
         sw = self.get_string_width(txt)
-        #print ("print_title() width={:.2f} for [{}] panelw={:.2f} with x={:.2f}->{:.2f} y={:.2f}->{:.2f} h={:.3f}". \
-        #        format(sw, txt, pw, px, self.get_x(), py, self.get_y(), mch))
-        #print ("print_title() of {}".format(txt))
-        #print ("\tx= {:.2f} to {:.2f} delta {:.2f}".format(px,self.get_x(),self.get_x()-px))
-        #print ("\ty= {:.2f} to {:.2f} delta {:.2f}".format(py,self.get_y(),self.get_y()-py))
-        #print ("\tcomputed w={:.3f} h={:.3f}".format(sw, mch))
-        #print ("\n")
 
-        self.set_font('Arial','',10)
+        self.set_font('Arial','', self.author_font_size)
         self.set_x(px)
         self.multi_cell(pw, mch, "\n", align='C', border=0)
         txt = self.element['author']
         self.set_x(px)
         self.multi_cell(pw, mch, txt, align='C', border=0)
-        #print ("Fini title")
-
-        self.pane_frame(pane_index)
+        
+        if self.title_frame: self.pane_frame(pane_index)
 
 
     def pane_frame(self, pane_index):
@@ -216,10 +249,8 @@ class Booklet(FPDF):
 
 
 
-
 if __name__ == "__main__":
 
-    book = Booklet('L', 'in','Letter')
-    book.build_panes(page_margin = 0.25, pane_margin=0.2)
-    book.process("Boomlet.pdf", "DaddyO.txt")
+    book = Booklet(ini="book.ini")
+    book.process("DaddyO.txt")
     book.publish()
