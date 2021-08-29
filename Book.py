@@ -4,6 +4,9 @@ from fpdf import FPDF
 import csv
 import datetime
 import configparser
+from pprint import pprint
+#import re
+
 '''
 ToDo
 x Create an ini file for reading in doc parameters
@@ -20,14 +23,6 @@ o Other page types besides recipe
 class Booklet(FPDF):
     def __init__(self, *args, **kwargs):
         super(Booklet, self).__init__('L', 'in','Letter')
-        self.element = { # elements in the book
-                'title' : "Booklet",
-                'author' : '',
-                'date' : 'August 1, 2021',
-                'edition' : "1.0",
-                'book8up' : '1.0',
-                '0': '', '1': '', '2': '', '3': '', '4': '', '5': '',
-                }
         self.config = configparser.ConfigParser()
 
         # added stuff
@@ -43,9 +38,11 @@ class Booklet(FPDF):
     def read_ini(self, iniFile):
         #print ("Exe {}".format("read_ini"))
         #print ("\tinFile = {}".format(iniFile))
+        # setup the config parser
         self.config = configparser.ConfigParser()
         self.config.read(iniFile)
         default = self.config['Default']
+        # read in the layout parameters
         self.page_margin = default.getfloat('PageMargin', 0.2)
         self.pane_margin = default.getfloat('PaneMargin', 0.2)
         self.pane_font_size = default.getint('PaneFontSize', 7)
@@ -58,6 +55,33 @@ class Booklet(FPDF):
         self.title_frame = default.getboolean('TitleFrame', True)
         self.back_frame = default.getboolean('BackFrame', True)
 
+        default_format = default.get('DefaultFormat', "Text")
+        self.pane_format = [default_format] * 8 #init the 8 pages to the default
+        for j in range(8):
+            self.pane_format[j] = default.get('P'+str(j+1)+'Format', default_format)
+
+        # Read the book specific portions
+        infiles = default.get('InFiles', "")
+
+        pprint (self.pane_format)
+        self.infiles = infiles.split(",")
+        self.infiles = [t.strip() for t in self.infiles]
+
+        self.title = default.get('Title', "Booklet Title")
+        self.author = default.get('Author', "<< author >>")
+        self.date = default.get('Date', "<< date >>")
+        self.edition = default.get('Edition', "<< edition >>")
+        self.book8up = "1.0" # no get
+
+        print ("*"*50)
+        print (self.infiles)
+        print (self.title)
+        print (self.author)
+        print (self.date)
+        print (self.edition)
+        #print (infiles.split(",").strip())
+        #print (re.split(', ',infiles))
+        print ("*"*50)
 
 
 
@@ -91,51 +115,22 @@ class Booklet(FPDF):
     def normal(self):
         self.set_font('Arial','',self.pane_font_size)
 
-    def load_definition(self, fname):
-        with open(fname) as csv_file:
-            csv_reader = csv.reader(csv_file, delimiter=',')
-            line_count = 0
-            self.defn = {}
-            for row in csv_reader:
-            #    print(f'\t{row[0]} {row[1]}.')
-                line_count += 1
-                self.defn[row[0].lower()] = row[1]
-                #if self.element.has_key(row[0]).lower():
-                if row[0].lower() in self.element:
-                    self.element[row[0].lower()] = row[1]
-                else:
-                    print ("Foreign key ", row[0].lower(), " ignored")
-            
-            """
-            print ('\n')
-            print ("="*50)
-            print (self.load_definition.__name__)
-            for key, value in self.element.items():
-                print (key, " : ", value)
-            print ("="*50)
-            """
-
-
-
-    def process(self, define_file):
+    def process(self):
         marPage = 0.25
         marPane = 0.2
-        print ("process() init with " + define_file)
 
-        self.load_definition(define_file)
 
-        #define = self.get_file_text(define_file)
-        #print (define)
         self.add_page()
         self.set_margins(marPage, marPage, marPage)
-        self.print_pane(0, self.element['0'])
-        self.print_pane(1, self.element['1'])
-        self.print_pane(2, self.element['2'])
-        self.print_pane(3, self.element['3'])
+
+        self.print_pane(0, self.infiles[0])
+        self.print_pane(1, self.infiles[1])
+        self.print_pane(2, self.infiles[2])
+        self.print_pane(3, self.infiles[3])
         self.print_back(pane_index=4)
         self.print_title(5)
-        self.print_pane(6, self.element['4'])
-        self.print_pane(7, self.element['5'])
+        self.print_pane(6, self.infiles[4])
+        self.print_pane(7, self.infiles[5])
 
     def print_pane(self, pane_index, infile):
         #print ("print_pane({})".format(infile))
@@ -169,36 +164,34 @@ class Booklet(FPDF):
         #print("\tpx={:.2f} py={:.2f} pw={:.2f}".format(px, py, pw))
 
         self.set_xy(px, py)
-        txt = self.element['title']
+        txt = self.title
         self.multi_cell(pw, mch, txt, align=back_align, border=0)
 
-        if self.element['author']:
+        if self.author:
             self.set_x(px)
-            txt = "by {}".format(self.element['author'])
+            txt = "by {}".format(self.author)
             self.multi_cell(pw, mch, txt, align=back_align, border=0)
 
-        if self.element['edition']:
+        if self.edition:
             self.set_x(px)
-            txt = "{} Edition".format(self.element['edition'])
+            txt = "{} Edition".format(self.edition)
             self.multi_cell(pw, mch, txt, align=back_align, border=0)
 
-        #if self.element['date']:
         now = datetime.datetime.now().strftime("%d %B %Y")
         self.set_x(px)
         txt = "Created on {}".format(now)
         self.multi_cell(pw, mch, txt, align=back_align, border=0)
 
-        if self.element['book8up']:
+        if self.book8up:
             self.set_x(px)
-            txt = "using book8up.py Ver {}".format(self.element['book8up'])
+            txt = "using book8up.py Ver {}".format(self.book8up)
             self.multi_cell(pw, mch, txt, align=back_align, border=0)
 
         if self.back_frame: self.pane_frame(pane_index)
 
 
-
     def print_title(self, pane_index=7, title_text=None):
-        txt = title_text or self.element['title']
+        txt = title_text or self.title
 
         pane_mar = (1.0 - self.pane_use_width)/2
         pw = self.pane_width * self.pane_use_width
@@ -220,7 +213,7 @@ class Booklet(FPDF):
         self.set_font('Arial','', self.author_font_size)
         self.set_x(px)
         self.multi_cell(pw, mch, "\n", align='C', border=0)
-        txt = self.element['author']
+        txt = self.author
         self.set_x(px)
         self.multi_cell(pw, mch, txt, align='C', border=0)
         
@@ -252,5 +245,6 @@ class Booklet(FPDF):
 if __name__ == "__main__":
 
     book = Booklet(ini="book.ini")
-    book.process("DaddyO.txt")
+    #debug print
+    book.process()
     book.publish()
