@@ -4,6 +4,7 @@ from fpdf import FPDF
 import csv
 import datetime
 import configparser
+import logging
 from pprint import pprint
 #import re
 
@@ -12,12 +13,23 @@ ToDo
 x Create an ini file for reading in doc parameters
 x Base class has the ini and defn files
 x Frame on title and backpage and each page
+x Better control on book defn file
+x Other page types besides recipe
+x image as a pane; add actual, width, height fit, left, centered
+x standard error output / python std?
+x logging
 
+o default image sizing
 o Book publishing with defn on command line
-o Image on Title and back
-o Fold lines
-o Better control on book defn file
-o Other page types besides recipe
+o pass body txt in ini file
+o nroff parser for text
+o pocket planner pages
+o   calendar
+o   weekly
+o   daily
+o   checkboxes
+o   lines
+o   grid / dots
 '''
 
 class Booklet(FPDF):
@@ -29,15 +41,13 @@ class Booklet(FPDF):
         self.fname = "Boomlet.pdf"
         ini_file = "book.ini"
         if 'ini' in kwargs:
-            print ("Processing new ini file = ", kwargs['ini'])
+            logging.debug ("Processing new ini file = {}".format( kwargs['ini']))
             ini_file = kwargs['ini']
         self.read_ini(ini_file)
         self.build_panes()
 
 
     def read_ini(self, iniFile):
-        #print ("Exe {}".format("read_ini"))
-        #print ("\tinFile = {}".format(iniFile))
         # setup the config parser
         self.config = configparser.ConfigParser()
         self.config.read(iniFile)
@@ -62,10 +72,16 @@ class Booklet(FPDF):
 
         # Read the book specific portions
         infiles = default.get('InFiles', "")
-
-        pprint (self.pane_format)
         self.infiles = infiles.split(",")
         self.infiles = [t.strip() for t in self.infiles]
+
+        self.pictures = default.get("Pictures","")
+        self.pictures = self.pictures.split(",")
+        self.pictures = [t.strip() for t in self.pictures]
+
+        self.pictures_fit = default.get("PicturesFit","")
+        self.pictures_fit = self.pictures_fit.split(",")
+        self.pictures_fit = [t.strip() for t in self.pictures_fit]
 
         self.title = default.get('Title', "Booklet Title")
         self.author = default.get('Author', "<< author >>")
@@ -73,21 +89,8 @@ class Booklet(FPDF):
         self.edition = default.get('Edition', "<< edition >>")
         self.book8up = "1.0" # no get
 
-        print ("*"*50)
-        print (self.infiles)
-        print (self.title)
-        print (self.author)
-        print (self.date)
-        print (self.edition)
-        #print (infiles.split(",").strip())
-        #print (re.split(', ',infiles))
-        print ("*"*50)
-
-
-
     def build_panes(self):
         # hardcoded
-        print ("building_panes() init")
         #self.page_margin = self.ipage_margin
         #self.pane_margin = self.ipane_margin
         paneW = (11 - 2*self.page_margin - 3*self.pane_margin)/4
@@ -103,11 +106,6 @@ class Booklet(FPDF):
                 y2 = y1 + self.pane_height
                 self.panes.append([x1, y1])
         j=0
-        '''
-        for pane in self.panes:
-            print ("{} {:.2f} {:.2f}".format(j, pane[0], pane[1]))
-            j+=1
-        '''
 
     def bold(self):
         self.set_font('Arial','B',self.pane_font_size)
@@ -116,24 +114,60 @@ class Booklet(FPDF):
         self.set_font('Arial','',self.pane_font_size)
 
     def process(self):
-        marPage = 0.25
-        marPane = 0.2
-
-
         self.add_page()
-        self.set_margins(marPage, marPage, marPage)
+        self.set_margins(self.page_margin, self.page_margin, self.page_margin)
 
-        self.print_pane(0, self.infiles[0])
-        self.print_pane(1, self.infiles[1])
-        self.print_pane(2, self.infiles[2])
-        self.print_pane(3, self.infiles[3])
-        self.print_back(pane_index=4)
-        self.print_title(5)
-        self.print_pane(6, self.infiles[4])
-        self.print_pane(7, self.infiles[5])
+        jinf = 0
+        jpf = 0
+        jpic = 0
+        for pfmt in self.pane_format:
+            if pfmt == "front":
+                self.gen_front(jpf)
+            elif pfmt == "back":
+                self.gen_back(jpf)
+            elif pfmt == "recipe":
+                self.gen_recipe(jpf, self.infiles[jinf])
+                jinf += 1
+            elif pfmt == "text":
+                self.gen_text(jpf, self.infiles[jinf])
+                jinf += 1
+            elif pfmt == "picture":
+                self.gen_picture(jpf, self.pictures[jpic], self.pictures_fit[jpic])
+                jpic += 1
+            else:
+                logging.error ("Error unknown format {}".format(pfmt))
+            jpf += 1
 
-    def print_pane(self, pane_index, infile):
-        #print ("print_pane({})".format(infile))
+    def gen_picture(self, pane_index, infile, fit):
+        px = self.panes[pane_index][0]
+        py = self.panes[pane_index][1]
+        pw = self.pane_width
+        self.normal()
+        #self.image(infile, px, py, pw, self.pane_height)
+        if fit=="actual":
+            self.image(infile, px, py)
+        elif fit=="width":
+            self.image(infile, px, py, pw)
+        elif fit=="height":
+            self.image(infile, px, py, h=self.pane_height)
+        elif fit=="fit":
+            self.image(infile, px, py, pw, self.pane_height)
+        else:
+            logging.error ("Error unknown image fit= {}".format(fit))
+
+    def gen_text(self, pane_index, infile):
+        txt = self.get_file_text(infile)
+        px = self.panes[pane_index][0]
+        py = self.panes[pane_index][1]
+        pw = self.pane_width
+        
+        mch = self.pane_font_size * 1.2 * self.pt2in
+
+        self.normal()
+        self.set_xy(px, py)
+        self.multi_cell(pw, mch, txt)
+
+    def gen_recipe(self, pane_index, infile):
         txt = self.get_file_text(infile)
         px = self.panes[pane_index][0]
         py = self.panes[pane_index][1]
@@ -150,8 +184,7 @@ class Booklet(FPDF):
         self.normal()
         self.multi_cell(pw, mch, txt[(j+1):])
 
-    def print_back(self, pane_index=2):
-        #print("print_back() on pane {}".format(pane_index))
+    def gen_back(self, pane_index=2):
         self.set_font('Arial','', self.back_font_size)
         mch = self.back_font_size * 1.3 * self.pt2in
 
@@ -161,7 +194,6 @@ class Booklet(FPDF):
         px = self.panes[pane_index][0] + pw_adjustment *self.pane_margin
         py = self.panes[pane_index][1] + (1*self.pane_height/2)
         pw = self.pane_width - 2*pw_adjustment *self.pane_margin #double for left&right
-        #print("\tpx={:.2f} py={:.2f} pw={:.2f}".format(px, py, pw))
 
         self.set_xy(px, py)
         txt = self.title
@@ -190,7 +222,7 @@ class Booklet(FPDF):
         if self.back_frame: self.pane_frame(pane_index)
 
 
-    def print_title(self, pane_index=7, title_text=None):
+    def gen_front(self, pane_index=7, title_text=None):
         txt = title_text or self.title
 
         pane_mar = (1.0 - self.pane_use_width)/2
@@ -237,14 +269,26 @@ class Booklet(FPDF):
         return txt
 
     def publish(self):
-        print("publish() booklet to file {}".format(self.fname))
+        logging.debug("publish() booklet to file {}".format(self.fname))
         self.output(self.fname)
 
 
 
 if __name__ == "__main__":
 
+    logging.basicConfig(format='%(asctime)s %(message)s', 
+            datefmt='%I:%M:%S', level=logging.DEBUG)
+
+
+    logging.debug("Running book.py")
+
+
+    logging.debug ("Creating object")
     book = Booklet(ini="book.ini")
-    #debug print
+    
+    logging.debug ("Processing")
     book.process()
+    
+    logging.debug ("Publishing")
     book.publish()
+    logging.debug ("Fini\n")
